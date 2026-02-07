@@ -5,6 +5,15 @@ pub struct RecordHeader {
     pub data_length: u64,
 }
 
+/// Record binary layout (16 bytes, Little-Endian):
+///
+/// ```text
+/// Offset  Size  Field
+/// ------  ----  -----------
+/// 0       8     id           (u64 LE) - Record ID
+/// 8       8     data_length  (u64 LE) - Payload size in bytes
+/// 16      N     payload      (N = data_length, not part of header)
+/// ```
 impl RecordHeader {
     pub fn to_bytes(&self) -> [u8; RECORD_HEADER_SIZE] {
         let mut buf = [0u8; RECORD_HEADER_SIZE];
