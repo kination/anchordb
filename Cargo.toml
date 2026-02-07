@@ -3,4 +3,11 @@ name = "jiodb"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "jiodb"
+path = "src/lib.rs"
+
 [dependencies]
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,56 @@
+pub mod record;
+pub mod index;
+pub mod storage;
+
+use std::io;
+use std::path::Path;
+
+use index::{Index, IndexEntry};
+use storage::Storage;
+
+pub struct JioDB {
+    storage: Storage,
+    index: Index,
+    next_id: u64,
+}
+
+/// JioDB provides simple storage, keeping data in key-value string format
+impl JioDB {
+    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+        let storage = Storage::open(path.as_ref())?;
+
+        Ok(Self {
+            storage,
+            index: Index::new(),
+            next_id: 1,
+        })
+    }
+
+    pub fn save(&mut self, data: &str) -> io::Result<u64> {
+        let id = self.next_id;
+        let bytes = data.as_bytes();
+
+        let offset = self.storage.append_record(id, bytes)?;
+
+        self.index.insert(id, IndexEntry {
+            offset,
+            data_length: bytes.len() as u64,
+        });
+        self.next_id += 1;
+
+        Ok(id)
+    }
+
+    pub fn load(&mut self, id: u64) -> io::Result<Option<String>> {
+        let entry = match self.index.get(id) {
+            Some(e) => e,
+            None => return Ok(None),
+        };
+
+        let offset = entry.offset;
+        let data_length = entry.data_length;
+        let bytes = self.storage.read_record(offset, data_length)?;
+
+        Ok(Some(String::from_utf8(bytes).expect("invalid utf-8")))
+    }
+}
