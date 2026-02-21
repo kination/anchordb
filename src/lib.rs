@@ -8,14 +8,13 @@ use std::path::Path;
 use index::{Index, IndexEntry};
 use storage::Storage;
 
-pub struct JioDB {
+pub struct AnchorDB {
     storage: Storage,
     index: Index,
     next_id: u64,
 }
 
-/// JioDB provides simple storage, keeping data in key-value string format
-impl JioDB {
+impl AnchorDB {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let storage = Storage::open(path.as_ref())?;
 

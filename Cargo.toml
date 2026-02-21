@@ -1,13 +1,15 @@
 [package]
-name = "jiodb"
-version = "0.1.0"
+name = "anchordb"
+version = "0.0.1"
 edition = "2024"
 
 [lib]
-name = "jiodb"
+name = "anchordb"
 path = "src/lib.rs"
 
 [dependencies]
+crc32fast = "1"
+fs2 = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
