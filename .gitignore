@@ -1,4 +1,6 @@
 /target
 
 .internal-doc/
+.agent/
 .claude/
+.gemini/
