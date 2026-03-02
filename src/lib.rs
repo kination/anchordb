@@ -1,3 +1,5 @@
+pub mod error;
+pub mod types;
 pub mod record;
 pub mod index;
 pub mod storage;

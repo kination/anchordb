@@ -11,7 +11,7 @@ pub const RECORD_TYPE_SUMMARY: u8 = 0x03;
 pub const RECORD_TYPE_SNAPSHOT: u8 = 0x04;
 pub const RECORD_TYPE_SCRATCHPAD: u8 = 0x05;
 
-/// Priority Levels
+/// 'Priority level' of data
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Priority {
@@ -35,7 +35,7 @@ impl TryFrom<u8> for Priority {
     }
 }
 
-/// Data Types supported by AnchorDB payload
+/// Data Types supported by DB payload
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DataType {
@@ -57,16 +57,15 @@ impl TryFrom<u8> for DataType {
     }
 }
 
-/// Wrapper for data passed to AnchorDB ensuring type safety
+/// Wrapper for data ensuring type safety
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnchorData {
     Bytes(Vec<u8>),
     Str(String),
-    Json(String), // Preserved as string for DB storage
+    Json(String),
 }
 
 impl AnchorData {
-    /// Get the corresponding DataType enum
     pub fn data_type(&self) -> DataType {
         match self {
             AnchorData::Bytes(_) => DataType::Bytes,
@@ -75,7 +74,7 @@ impl AnchorData {
         }
     }
 
-    /// Return the underlying bytes for storage
+    /// Return bytes for storage
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             AnchorData::Bytes(b) => b,
