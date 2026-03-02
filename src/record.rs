@@ -1,7 +1,61 @@
 use crate::error::AnchorError;
 use crc32fast::Hasher;
 
-pub const RECORD_HEADER_SIZE: usize = 16;
+pub const RECORD_HEADER_SIZE: usize = 36;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordHeader {
+    pub record_type: u8,
+    pub id: u64,
+    pub timestamp: u64,
+    pub session_id: u64,
+    pub data_type: u8,
+    pub tags_len: u16,
+    pub data_length: u32,
+    pub crc32: u32,
+}
+
+/// Record binary layout (36 bytes fixed parts, Little-Endian):
+///
+/// ```text
+/// Offset  Size  Field          Type      Description
+/// ------  ----  -----------    -------   -----------
+/// 0       1     record_type    u8        0x01=Data, 0x02=Tombstone, etc.
+/// 1       8     id             u64 LE    Record ID
+/// 9       8     timestamp      u64 LE    Epoch millis
+/// 17      8     session_id     u64 LE    Session ID
+/// 25      1     data_type      u8        0x00=Bytes, 0x01=Str, 0x02=JSON
+/// 26      2     tags_len       u16 LE    Tags length
+/// 28      4     data_length    u32 LE    Payload length
+/// 32      4     crc32          u32 LE    Payload + Tags CRC32
+/// ```
+impl RecordHeader {
+    pub fn to_bytes(&self) -> [u8; RECORD_HEADER_SIZE] {
+        let mut buf = [0u8; RECORD_HEADER_SIZE];
+        buf[0] = self.record_type;
+        buf[1..9].copy_from_slice(&self.id.to_le_bytes());
+        buf[9..17].copy_from_slice(&self.timestamp.to_le_bytes());
+        buf[17..25].copy_from_slice(&self.session_id.to_le_bytes());
+        buf[25] = self.data_type;
+        buf[26..28].copy_from_slice(&self.tags_len.to_le_bytes());
+        buf[28..32].copy_from_slice(&self.data_length.to_le_bytes());
+        buf[32..36].copy_from_slice(&self.crc32.to_le_bytes());
+        buf
+    }
+
+    pub fn from_bytes(buf: &[u8; RECORD_HEADER_SIZE]) -> Self {
+        Self {
+            record_type: buf[0],
+            id: u64::from_le_bytes(buf[1..9].try_into().unwrap()),
+            timestamp: u64::from_le_bytes(buf[9..17].try_into().unwrap()),
+            session_id: u64::from_le_bytes(buf[17..25].try_into().unwrap()),
+            data_type: buf[25],
+            tags_len: u16::from_le_bytes(buf[26..28].try_into().unwrap()),
+            data_length: u32::from_le_bytes(buf[28..32].try_into().unwrap()),
+            crc32: u32::from_le_bytes(buf[32..36].try_into().unwrap()),
+        }
+    }
+}
 pub const FILE_HEADER_MAGIC: [u8; 4] = *b"ANCH";
 pub const FILE_HEADER_SIZE: usize = 64;
 
@@ -98,33 +152,4 @@ impl FileHeader {
 }
 
 
-pub struct RecordHeader {
-    pub id: u64,
-    pub data_length: u64,
-}
-
-/// Record binary layout (16 bytes, Little-Endian):
-///
-/// ```text
-/// Offset  Size  Field
-/// ------  ----  -----------
-/// 0       8     id           (u64 LE) - Record ID
-/// 8       8     data_length  (u64 LE) - Payload size in bytes
-/// 16      N     payload      (N = data_length, not part of header)
-/// ```
-impl RecordHeader {
-    pub fn to_bytes(&self) -> [u8; RECORD_HEADER_SIZE] {
-        let mut buf = [0u8; RECORD_HEADER_SIZE];
-        buf[0..8].copy_from_slice(&self.id.to_le_bytes());
-        buf[8..16].copy_from_slice(&self.data_length.to_le_bytes());
-        buf
-    }
-
-    pub fn from_bytes(buf: &[u8; RECORD_HEADER_SIZE]) -> Self {
-        Self {
-            id: u64::from_le_bytes(buf[0..8].try_into().unwrap()),
-            data_length: u64::from_le_bytes(buf[8..16].try_into().unwrap()),
-        }
-    }
-}
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 pub struct IndexEntry {
     pub offset: u64,
-    pub data_length: u64,
+    pub data_length: u32,
 }
 
 pub struct Index {

@@ -10,6 +10,10 @@ use std::path::Path;
 use index::{Index, IndexEntry};
 use storage::Storage;
 
+use types::RECORD_TYPE_DATA;
+use types::DataType::Str;
+
+
 pub struct AnchorDB {
     storage: Storage,
     index: Index,
@@ -31,11 +35,16 @@ impl AnchorDB {
         let id = self.next_id;
         let bytes = data.as_bytes();
 
-        let offset = self.storage.append_record(id, bytes)?;
+        let offset = self.storage.append_record(
+            RECORD_TYPE_DATA,
+            Str as u8,
+            id,
+            bytes
+        )?;
 
         self.index.insert(id, IndexEntry {
             offset,
-            data_length: bytes.len() as u64,
+            data_length: bytes.len() as u32,
         });
         self.next_id += 1;
 

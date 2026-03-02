@@ -1,5 +1,25 @@
 use anchordb::error::AnchorError;
-use anchordb::record::FileHeader;
+use anchordb::record::{FileHeader, RecordHeader, RECORD_HEADER_SIZE};
+
+#[test]
+fn test_record_header_serialization() {
+    let header = RecordHeader {
+        record_type: 0x01,
+        id: 1234,
+        timestamp: 1709123456789,
+        session_id: 99,
+        data_type: 0x01,
+        tags_len: 12,
+        data_length: 1024,
+        crc32: 0xABCDEF01,
+    };
+
+    let bytes = header.to_bytes();
+    assert_eq!(bytes.len(), RECORD_HEADER_SIZE);
+    
+    let decoded = RecordHeader::from_bytes(&bytes);
+    assert_eq!(header, decoded);
+}
 
 #[test]
 fn test_file_header_serialization() {
