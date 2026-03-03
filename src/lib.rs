@@ -35,7 +35,7 @@ impl AnchorDB {
         let id = self.next_id;
         let bytes = data.as_bytes();
 
-        let offset = self.storage.append_record(
+        let (offset, timestamp) = self.storage.append_record(
             RECORD_TYPE_DATA,
             Str as u8,
             id,
@@ -45,6 +45,10 @@ impl AnchorDB {
         self.index.insert(id, IndexEntry {
             offset,
             data_length: bytes.len() as u32,
+            data_type: Str,
+            record_type: RECORD_TYPE_DATA,
+            session_id: 0,
+            timestamp,
         });
         self.next_id += 1;
 

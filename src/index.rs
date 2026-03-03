@@ -1,8 +1,13 @@
 use std::collections::HashMap;
+use crate::types::DataType;
 
 pub struct IndexEntry {
     pub offset: u64,
     pub data_length: u32,
+    pub data_type: DataType,
+    pub record_type: u8,
+    pub session_id: u64,
+    pub timestamp: u64,
 }
 
 pub struct Index {
@@ -22,5 +27,9 @@ impl Index {
 
     pub fn get(&self, id: u64) -> Option<&IndexEntry> {
         self.entries.get(&id)
+    }
+
+    pub fn remove(&mut self, id: u64) -> Option<IndexEntry> {
+        self.entries.remove(&id)
     }
 }

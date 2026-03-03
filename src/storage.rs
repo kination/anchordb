@@ -24,7 +24,7 @@ impl Storage {
         })
     }
 
-    pub fn append_record(&mut self, record_type: u8, data_type: u8, id: u64, data: &[u8]) -> io::Result<u64> {
+    pub fn append_record(&mut self, record_type: u8, data_type: u8, id: u64, data: &[u8]) -> io::Result<(u64, u64)> {
         let offset = self.file.seek(SeekFrom::End(0))?;
 
         let timestamp = std::time::SystemTime::now()
@@ -49,7 +49,7 @@ impl Storage {
         self.file.write_all(&header.to_bytes())?;
         self.file.write_all(data)?;
 
-        Ok(offset)
+        Ok((offset, timestamp))
     }
 
     pub fn read_record(&mut self, offset: u64, data_length: u32) -> io::Result<Vec<u8>> {
