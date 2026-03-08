@@ -1,5 +1,5 @@
 /// Magic Bytes ("ACDB")
-pub const MAGIC_BYTES: &[u8; 4] = b"ACDB";
+pub const MAGIC_BYTES: [u8; 4] = *b"ACDB";
 
 /// File Format Version
 pub const VERSION: u16 = 1;
