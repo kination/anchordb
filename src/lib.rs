@@ -1,65 +1,89 @@
 pub mod error;
-pub mod types;
-pub mod record;
 pub mod index;
+pub mod record;
 pub mod storage;
+pub mod types;
 
 use std::io;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use index::{Index, IndexEntry};
 use storage::Storage;
 
-use types::RECORD_TYPE_DATA;
 use types::DataType::Str;
+use types::RECORD_TYPE_DATA;
 
-
-pub struct AnchorDB {
+/// Internal 'inner' class for safe multi-thread access
+pub struct AnchorDBInner {
     storage: Storage,
     index: Index,
     next_id: u64,
 }
 
+#[derive(Clone)]
+pub struct AnchorDB {
+    inner: Arc<Mutex<AnchorDBInner>>,
+}
+
 impl AnchorDB {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let storage = Storage::open(path.as_ref())?;
+        let mut storage = Storage::open(path.as_ref())?;
+        let mut index = Index::new();
+
+        let max_id = storage.rebuild_index(&mut index)?;
+
+        let inner = AnchorDBInner {
+            storage,
+            index,
+            next_id: max_id + 1,
+        };
 
         Ok(Self {
-            storage,
-            index: Index::new(),
-            next_id: 1,
+            inner: Arc::new(Mutex::new(inner)),
         })
     }
 
-    pub fn save(&mut self, data: &str) -> io::Result<u64> {
-        let id = self.next_id;
+    pub fn save(&self, data: &str) -> io::Result<u64> {
+        let mut inner = self.inner.lock().unwrap();
+        let id = inner.next_id;
         let bytes = data.as_bytes();
 
-        let offset = self.storage.append_record(
-            RECORD_TYPE_DATA,
-            Str as u8,
-            id,
-            bytes
-        )?;
+        let (offset, timestamp) =
+            inner
+                .storage
+                .append_record(RECORD_TYPE_DATA, Str as u8, id, bytes)?;
 
-        self.index.insert(id, IndexEntry {
-            offset,
-            data_length: bytes.len() as u32,
-        });
-        self.next_id += 1;
+        inner.index.insert(
+            id,
+            IndexEntry {
+                offset,
+                data_length: bytes.len() as u32,
+                data_type: Str,
+                record_type: RECORD_TYPE_DATA,
+                session_id: 0,
+                timestamp,
+            },
+        );
+        inner.next_id += 1;
 
         Ok(id)
     }
 
-    pub fn load(&mut self, id: u64) -> io::Result<Option<String>> {
-        let entry = match self.index.get(id) {
-            Some(e) => e,
+    pub fn load(&self, id: u64) -> io::Result<Option<String>> {
+        let mut inner = self.inner.lock().unwrap();
+
+        let entry = match inner.index.get(id) {
+            Some(e) => {
+                // Copy values before releasing borrow
+                let offset = e.offset;
+                let data_length = e.data_length;
+                (offset, data_length)
+            }
             None => return Ok(None),
         };
 
-        let offset = entry.offset;
-        let data_length = entry.data_length;
-        let bytes = self.storage.read_record(offset, data_length)?;
+        let bytes = inner.storage.read_record(entry.0, entry.1)?;
 
         Ok(Some(String::from_utf8(bytes).expect("invalid utf-8")))
     }

@@ -1,4 +1,5 @@
 use crate::error::AnchorError;
+use crate::types::MAGIC_BYTES;
 use crc32fast::Hasher;
 
 pub const RECORD_HEADER_SIZE: usize = 36;
@@ -56,7 +57,6 @@ impl RecordHeader {
         }
     }
 }
-pub const FILE_HEADER_MAGIC: [u8; 4] = *b"ANCH";
 pub const FILE_HEADER_SIZE: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +75,7 @@ pub struct FileHeader {
 impl FileHeader {
     pub fn new(version: u16) -> Self {
         Self {
-            magic: FILE_HEADER_MAGIC,
+            magic: MAGIC_BYTES,
             version,
             flags: 0,
             record_count: 0,
@@ -120,7 +120,7 @@ impl FileHeader {
         let mut magic = [0u8; 4];
         magic.copy_from_slice(&buf[0..4]);
 
-        if magic != FILE_HEADER_MAGIC {
+        if magic != MAGIC_BYTES {
             return Err(AnchorError::InvalidMagic);
         }
 
@@ -150,6 +150,3 @@ impl FileHeader {
         Ok(header)
     }
 }
-
-
-
