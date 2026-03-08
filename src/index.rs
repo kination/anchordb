@@ -1,6 +1,17 @@
-use crate::types::DataType;
+use crate::types::{
+    DataType, FIELD_DATA_LENGTH_SIZE, FIELD_DATA_TYPE_SIZE, FIELD_ID_SIZE, FIELD_OFFSET_SIZE,
+    FIELD_RECORD_TYPE_SIZE, FIELD_SESSION_ID_SIZE, FIELD_TIMESTAMP_SIZE,
+};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::{collections::HashMap, fs::File, io, path::Path};
+
+pub const INDEX_ENTRY_SIZE: usize = FIELD_ID_SIZE
+    + FIELD_OFFSET_SIZE
+    + FIELD_DATA_LENGTH_SIZE
+    + FIELD_DATA_TYPE_SIZE
+    + FIELD_RECORD_TYPE_SIZE
+    + FIELD_SESSION_ID_SIZE
+    + FIELD_TIMESTAMP_SIZE;
 
 pub struct IndexEntry {
     pub offset: u64,
@@ -34,14 +45,6 @@ impl Index {
         self.entries.remove(&id)
     }
 
-    // TODO: [3.2 시작 최적화] 인덱스 스냅샷 직렬화/역직렬화 구현 가이드
-    // 1. `pub fn serialize_to_file(&self, path: &Path, latest_id: u64, max_offset: u64) -> io::Result<()>`
-    //    - 메모리의 `entries`를 순회하며 각각의 `IndexEntry` 프로퍼티들을 바이너리로 직렬화하여 `.idx` 파일에 저장합니다.
-    //    - 파일 맨 앞(또는 맨 뒤)에는 복원 시 필요한 전역 정보인 `latest_id`와 데이터 파일의 `max_offset` 정보도 함께 적어 넣습니다.
-    // 2. `pub fn deserialize_from_file(path: &Path) -> io::Result<(Index, u64, u64)>`
-    //    - `.idx` 파일을 읽어서 역직렬화한 뒤, 복원된 `Index` 해시맵 구조체와 `latest_id`, 그리고 재개를 위한 `max_offset` 세 가지를 반환합니다.
-    //    - 구조체 필드가 고정 크기이므로 직접 버퍼를 파싱하거나 `bincode` 같은 경량 직렬화 라이브러리를 고민해 볼 수 있습니다.
-
     pub fn deserialize_from_file(path: &Path) -> io::Result<(Index, u64, u64)> {
         let file = File::open(path)?;
         let mut reader = BufReader::new(file);
@@ -60,23 +63,57 @@ impl Index {
 
         let mut index = Index::new();
 
-        let mut entry_buf = [0u8; 38];
+        let mut entry_buf = [0u8; INDEX_ENTRY_SIZE];
 
         for _ in 0..count {
             reader.read_exact(&mut entry_buf)?;
 
-            let id = u64::from_le_bytes(entry_buf[0..8].try_into().unwrap());
-            let offset = u64::from_le_bytes(entry_buf[8..16].try_into().unwrap());
-            let data_length = u32::from_le_bytes(entry_buf[16..20].try_into().unwrap());
-            let data_type = DataType::try_from(entry_buf[20]).unwrap_or(DataType::Bytes);
-            let record_type = entry_buf[21];
-            let session_id = u64::from_le_bytes(entry_buf[22..30].try_into().unwrap());
-            let timestamp = u64::from_le_bytes(entry_buf[30..38].try_into().unwrap());
+            let mut offset = 0;
+
+            let id = u64::from_le_bytes(
+                entry_buf[offset..offset + FIELD_ID_SIZE]
+                    .try_into()
+                    .unwrap(),
+            );
+            offset += FIELD_ID_SIZE;
+
+            let entry_offset = u64::from_le_bytes(
+                entry_buf[offset..offset + FIELD_OFFSET_SIZE]
+                    .try_into()
+                    .unwrap(),
+            );
+            offset += FIELD_OFFSET_SIZE;
+
+            let data_length = u32::from_le_bytes(
+                entry_buf[offset..offset + FIELD_DATA_LENGTH_SIZE]
+                    .try_into()
+                    .unwrap(),
+            );
+            offset += FIELD_DATA_LENGTH_SIZE;
+
+            let data_type = DataType::try_from(entry_buf[offset]).unwrap_or(DataType::Bytes);
+            offset += FIELD_DATA_TYPE_SIZE;
+
+            let record_type = entry_buf[offset];
+            offset += FIELD_RECORD_TYPE_SIZE;
+
+            let session_id = u64::from_le_bytes(
+                entry_buf[offset..offset + FIELD_SESSION_ID_SIZE]
+                    .try_into()
+                    .unwrap(),
+            );
+            offset += FIELD_SESSION_ID_SIZE;
+
+            let timestamp = u64::from_le_bytes(
+                entry_buf[offset..offset + FIELD_TIMESTAMP_SIZE]
+                    .try_into()
+                    .unwrap(),
+            );
 
             index.insert(
                 id,
                 IndexEntry {
-                    offset,
+                    offset: entry_offset,
                     data_length,
                     data_type,
                     record_type,

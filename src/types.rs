@@ -4,6 +4,17 @@ pub const MAGIC_BYTES: [u8; 4] = *b"ACDB";
 /// File Format Version
 pub const VERSION: u16 = 1;
 
+/// Common Field Sizes for Binary Layout
+pub const FIELD_ID_SIZE: usize = 8;
+pub const FIELD_OFFSET_SIZE: usize = 8;
+pub const FIELD_TIMESTAMP_SIZE: usize = 8;
+pub const FIELD_SESSION_ID_SIZE: usize = 8;
+pub const FIELD_DATA_LENGTH_SIZE: usize = 4;
+pub const FIELD_TAGS_LEN_SIZE: usize = 2;
+pub const FIELD_CRC32_SIZE: usize = 4;
+pub const FIELD_DATA_TYPE_SIZE: usize = 1;
+pub const FIELD_RECORD_TYPE_SIZE: usize = 1;
+
 /// Record Types
 pub const RECORD_TYPE_DATA: u8 = 0x01;
 pub const RECORD_TYPE_TOMBSTONE: u8 = 0x02;
