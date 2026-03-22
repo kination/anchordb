@@ -26,6 +26,12 @@ pub struct Index {
     entries: HashMap<u64, IndexEntry>,
 }
 
+impl Default for Index {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Index {
     pub fn new() -> Self {
         Self {
@@ -43,6 +49,22 @@ impl Index {
 
     pub fn remove(&mut self, id: u64) -> Option<IndexEntry> {
         self.entries.remove(&id)
+    }
+
+    pub fn contains(&self, id: u64) -> bool {
+        self.entries.contains_key(&id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.entries.keys().copied().collect()
     }
 
     pub fn deserialize_from_file(path: &Path) -> io::Result<(Index, u64, u64)> {

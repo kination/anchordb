@@ -88,6 +88,26 @@ impl AnchorDB {
         Ok(Some(String::from_utf8(bytes).expect("invalid utf-8")))
     }
 
+    /// `true` if active (non-tombstoned) record with given ID exists
+    pub fn exists(&self, id: u64) -> bool {
+        self.inner.lock().unwrap().index.contains(id)
+    }
+
+    /// Return count of active records.
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().index.len()
+    }
+
+    /// `true` if database has no active records.
+    pub fn is_empty(&self) -> bool {
+        self.inner.lock().unwrap().index.is_empty()
+    }
+
+    /// Return all active record IDs(order is unspecified)
+    pub fn keys(&self) -> Vec<u64> {
+        self.inner.lock().unwrap().index.keys()
+    }
+
     /// Saves the in-memory index to a `.idx` file for fast startup on next open.
     pub fn close(&self) -> io::Result<()> {
         //  Make 'local_inner' to avoid holding the lock while doing file I/O
@@ -112,8 +132,9 @@ impl Drop for AnchorDBInner {
     fn drop(&mut self) {
         let idx_path = self.storage.idx_path();
         let max_offset = self.storage.path.metadata().map(|m| m.len()).unwrap_or(0);
+        let latest_id = self.next_id.saturating_sub(1);
         let _ = self
             .index
-            .serialize_to_file(&idx_path, self.next_id, max_offset);
+            .serialize_to_file(&idx_path, latest_id, max_offset);
     }
 }

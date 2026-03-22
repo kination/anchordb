@@ -18,13 +18,14 @@ impl Storage {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         if let Err(e) = storage_obj.try_lock_exclusive() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to lock file {:?}: {}", path, e),
-            ));
+            return Err(io::Error::other(format!(
+                "Failed to lock file {:?}: {}",
+                path, e
+            )));
         }
 
         let mut storage = Self {
@@ -228,14 +229,14 @@ impl Storage {
             }
 
             let mut data_buf = vec![0u8; header.data_length as usize];
-            if header.data_length > 0 {
-                if let Err(e) = self.storage_obj.read_exact(&mut data_buf) {
-                    if e.kind() == io::ErrorKind::UnexpectedEof {
-                        self.storage_obj.set_len(valid_offset)?;
-                        break;
-                    } else {
-                        return Err(e);
-                    }
+            if header.data_length > 0
+                && let Err(e) = self.storage_obj.read_exact(&mut data_buf)
+            {
+                if e.kind() == io::ErrorKind::UnexpectedEof {
+                    self.storage_obj.set_len(valid_offset)?;
+                    break;
+                } else {
+                    return Err(e);
                 }
             }
 

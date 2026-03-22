@@ -98,3 +98,36 @@ fn drop_saves_idx_automatically() {
     assert_eq!(db2.load(1).unwrap(), Some("one".to_string()));
     assert_eq!(db2.load(2).unwrap(), Some("two".to_string()));
 }
+
+#[test]
+fn auxiliary_on_empty_db() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db = AnchorDB::open(tmp.path()).unwrap();
+
+    assert!(db.is_empty());
+    assert_eq!(db.len(), 0);
+    assert!(db.keys().is_empty());
+    assert!(!db.exists(1));
+}
+
+#[test]
+fn auxiliary_after_saves() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db = AnchorDB::open(tmp.path()).unwrap();
+
+    let id1 = db.save("alpha").unwrap();
+    let id2 = db.save("beta").unwrap();
+    let id3 = db.save("gamma").unwrap();
+
+    assert!(!db.is_empty());
+    assert_eq!(db.len(), 3);
+
+    assert!(db.exists(id1));
+    assert!(db.exists(id2));
+    assert!(db.exists(id3));
+    assert!(!db.exists(999));
+
+    let mut keys = db.keys();
+    keys.sort();
+    assert_eq!(keys, vec![id1, id2, id3]);
+}
