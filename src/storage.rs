@@ -159,10 +159,20 @@ impl Storage {
         self.storage_obj.sync_all()
     }
 
+    /// Return `.idx` file path derived from DB file path.
+    pub fn idx_path(&self) -> PathBuf {
+        let mut idx_path = self.path.clone();
+        let mut ext = idx_path.extension().unwrap_or_default().to_os_string();
+        ext.push(".idx");
+        idx_path.set_extension(ext);
+        idx_path
+    }
+
     /// Rebuild index by scanning all records
     ///
+    /// - If `.idx` file exists, load it and tail-read only new records
     /// - Include Truncate recovery
-    /// - If there's unexpectd EOF or CRC32 mismatch, truncate the file
+    /// - If there's unexpected EOF or CRC32 mismatch, truncate the file
     /// - If data length is greater than file size, truncate the file
     /// - Return latest_id
     pub fn rebuild_index(&mut self, index: &mut crate::index::Index) -> io::Result<u64> {
@@ -172,6 +182,21 @@ impl Storage {
 
         if file_len < offset {
             return Ok(0);
+        }
+
+        // Try loading `.idx` snapshot for quick boot (tail-read optimization)
+        let idx_path = self.idx_path();
+        if idx_path.exists() {
+            match crate::index::Index::deserialize_from_file(&idx_path) {
+                Ok((loaded_index, loaded_latest_id, loaded_max_offset)) => {
+                    *index = loaded_index;
+                    latest_id = loaded_latest_id;
+                    offset = loaded_max_offset;
+                }
+                Err(_) => {
+                    // Corrupted .idx file, and fallback to 'full scan'
+                }
+            }
         }
 
         self.storage_obj.seek(SeekFrom::Start(offset))?;

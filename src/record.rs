@@ -1,8 +1,19 @@
 use crate::error::AnchorError;
-use crate::types::MAGIC_BYTES;
+use crate::types::{
+    FIELD_CRC32_SIZE, FIELD_DATA_LENGTH_SIZE, FIELD_DATA_TYPE_SIZE, FIELD_ID_SIZE,
+    FIELD_RECORD_TYPE_SIZE, FIELD_SESSION_ID_SIZE, FIELD_TAGS_LEN_SIZE, FIELD_TIMESTAMP_SIZE,
+    MAGIC_BYTES,
+};
 use crc32fast::Hasher;
 
-pub const RECORD_HEADER_SIZE: usize = 36;
+pub const RECORD_HEADER_SIZE: usize = FIELD_RECORD_TYPE_SIZE
+    + FIELD_ID_SIZE
+    + FIELD_TIMESTAMP_SIZE
+    + FIELD_SESSION_ID_SIZE
+    + FIELD_DATA_TYPE_SIZE
+    + FIELD_TAGS_LEN_SIZE
+    + FIELD_DATA_LENGTH_SIZE
+    + FIELD_CRC32_SIZE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordHeader {
@@ -33,30 +44,97 @@ pub struct RecordHeader {
 impl RecordHeader {
     pub fn to_bytes(&self) -> [u8; RECORD_HEADER_SIZE] {
         let mut buf = [0u8; RECORD_HEADER_SIZE];
-        buf[0] = self.record_type;
-        buf[1..9].copy_from_slice(&self.id.to_le_bytes());
-        buf[9..17].copy_from_slice(&self.timestamp.to_le_bytes());
-        buf[17..25].copy_from_slice(&self.session_id.to_le_bytes());
-        buf[25] = self.data_type;
-        buf[26..28].copy_from_slice(&self.tags_len.to_le_bytes());
-        buf[28..32].copy_from_slice(&self.data_length.to_le_bytes());
-        buf[32..36].copy_from_slice(&self.crc32.to_le_bytes());
+        let mut offset = 0;
+
+        buf[offset] = self.record_type;
+        offset += FIELD_RECORD_TYPE_SIZE;
+
+        buf[offset..offset + FIELD_ID_SIZE].copy_from_slice(&self.id.to_le_bytes());
+        offset += FIELD_ID_SIZE;
+
+        buf[offset..offset + FIELD_TIMESTAMP_SIZE].copy_from_slice(&self.timestamp.to_le_bytes());
+        offset += FIELD_TIMESTAMP_SIZE;
+
+        buf[offset..offset + FIELD_SESSION_ID_SIZE].copy_from_slice(&self.session_id.to_le_bytes());
+        offset += FIELD_SESSION_ID_SIZE;
+
+        buf[offset] = self.data_type;
+        offset += FIELD_DATA_TYPE_SIZE;
+
+        buf[offset..offset + FIELD_TAGS_LEN_SIZE].copy_from_slice(&self.tags_len.to_le_bytes());
+        offset += FIELD_TAGS_LEN_SIZE;
+
+        buf[offset..offset + FIELD_DATA_LENGTH_SIZE]
+            .copy_from_slice(&self.data_length.to_le_bytes());
+        offset += FIELD_DATA_LENGTH_SIZE;
+
+        buf[offset..offset + FIELD_CRC32_SIZE].copy_from_slice(&self.crc32.to_le_bytes());
+
         buf
     }
 
     pub fn from_bytes(buf: &[u8; RECORD_HEADER_SIZE]) -> Self {
+        let mut offset = 0;
+
+        let record_type = buf[offset];
+        offset += FIELD_RECORD_TYPE_SIZE;
+
+        let id = u64::from_le_bytes(buf[offset..offset + FIELD_ID_SIZE].try_into().unwrap());
+        offset += FIELD_ID_SIZE;
+
+        let timestamp = u64::from_le_bytes(
+            buf[offset..offset + FIELD_TIMESTAMP_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FIELD_TIMESTAMP_SIZE;
+
+        let session_id = u64::from_le_bytes(
+            buf[offset..offset + FIELD_SESSION_ID_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FIELD_SESSION_ID_SIZE;
+
+        let data_type = buf[offset];
+        offset += FIELD_DATA_TYPE_SIZE;
+
+        let tags_len = u16::from_le_bytes(
+            buf[offset..offset + FIELD_TAGS_LEN_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FIELD_TAGS_LEN_SIZE;
+
+        let data_length = u32::from_le_bytes(
+            buf[offset..offset + FIELD_DATA_LENGTH_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FIELD_DATA_LENGTH_SIZE;
+
+        let crc32 = u32::from_le_bytes(buf[offset..offset + FIELD_CRC32_SIZE].try_into().unwrap());
+
         Self {
-            record_type: buf[0],
-            id: u64::from_le_bytes(buf[1..9].try_into().unwrap()),
-            timestamp: u64::from_le_bytes(buf[9..17].try_into().unwrap()),
-            session_id: u64::from_le_bytes(buf[17..25].try_into().unwrap()),
-            data_type: buf[25],
-            tags_len: u16::from_le_bytes(buf[26..28].try_into().unwrap()),
-            data_length: u32::from_le_bytes(buf[28..32].try_into().unwrap()),
-            crc32: u32::from_le_bytes(buf[32..36].try_into().unwrap()),
+            record_type,
+            id,
+            timestamp,
+            session_id,
+            data_type,
+            tags_len,
+            data_length,
+            crc32,
         }
     }
 }
+pub const FILE_MAGIC_SIZE: usize = 4;
+pub const FILE_VERSION_SIZE: usize = 2;
+pub const FILE_FLAGS_SIZE: usize = 2;
+pub const FILE_RECORD_COUNT_SIZE: usize = 8;
+pub const FILE_TOTAL_RECORDS_SIZE: usize = 8;
+pub const FILE_DATA_SIZE_SIZE: usize = 8;
+pub const FILE_NEXT_ID_SIZE: usize = 8;
+pub const FILE_CHECKSUM_SIZE: usize = 4;
 pub const FILE_HEADER_SIZE: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,35 +180,82 @@ impl FileHeader {
     pub fn to_bytes(&mut self) -> [u8; FILE_HEADER_SIZE] {
         self.checksum = self.calculate_checksum();
         let mut buf = [0u8; FILE_HEADER_SIZE];
+        let mut offset = 0;
 
-        buf[0..4].copy_from_slice(&self.magic);
-        buf[4..6].copy_from_slice(&self.version.to_le_bytes());
-        buf[6..8].copy_from_slice(&self.flags.to_le_bytes());
-        buf[8..16].copy_from_slice(&self.record_count.to_le_bytes());
-        buf[16..24].copy_from_slice(&self.total_records.to_le_bytes());
-        buf[24..32].copy_from_slice(&self.data_size.to_le_bytes());
-        buf[32..40].copy_from_slice(&self.next_id.to_le_bytes());
-        buf[40..44].copy_from_slice(&self.checksum.to_le_bytes());
+        buf[offset..offset + FILE_MAGIC_SIZE].copy_from_slice(&self.magic);
+        offset += FILE_MAGIC_SIZE;
+
+        buf[offset..offset + FILE_VERSION_SIZE].copy_from_slice(&self.version.to_le_bytes());
+        offset += FILE_VERSION_SIZE;
+
+        buf[offset..offset + FILE_FLAGS_SIZE].copy_from_slice(&self.flags.to_le_bytes());
+        offset += FILE_FLAGS_SIZE;
+
+        buf[offset..offset + FILE_RECORD_COUNT_SIZE]
+            .copy_from_slice(&self.record_count.to_le_bytes());
+        offset += FILE_RECORD_COUNT_SIZE;
+
+        buf[offset..offset + FILE_TOTAL_RECORDS_SIZE]
+            .copy_from_slice(&self.total_records.to_le_bytes());
+        offset += FILE_TOTAL_RECORDS_SIZE;
+
+        buf[offset..offset + FILE_DATA_SIZE_SIZE].copy_from_slice(&self.data_size.to_le_bytes());
+        offset += FILE_DATA_SIZE_SIZE;
+
+        buf[offset..offset + FILE_NEXT_ID_SIZE].copy_from_slice(&self.next_id.to_le_bytes());
+        offset += FILE_NEXT_ID_SIZE;
+
+        buf[offset..offset + FILE_CHECKSUM_SIZE].copy_from_slice(&self.checksum.to_le_bytes());
         // Bytes 44..64 are reserved and left as 0
 
         buf
     }
 
     pub fn from_bytes(buf: &[u8; FILE_HEADER_SIZE]) -> Result<Self, AnchorError> {
+        let mut offset = 0;
+
         let mut magic = [0u8; 4];
-        magic.copy_from_slice(&buf[0..4]);
+        magic.copy_from_slice(&buf[offset..offset + FILE_MAGIC_SIZE]);
+        offset += FILE_MAGIC_SIZE;
 
         if magic != MAGIC_BYTES {
             return Err(AnchorError::InvalidMagic);
         }
 
-        let version = u16::from_le_bytes(buf[4..6].try_into().unwrap());
-        let flags = u16::from_le_bytes(buf[6..8].try_into().unwrap());
-        let record_count = u64::from_le_bytes(buf[8..16].try_into().unwrap());
-        let total_records = u64::from_le_bytes(buf[16..24].try_into().unwrap());
-        let data_size = u64::from_le_bytes(buf[24..32].try_into().unwrap());
-        let next_id = u64::from_le_bytes(buf[32..40].try_into().unwrap());
-        let checksum = u32::from_le_bytes(buf[40..44].try_into().unwrap());
+        let version =
+            u16::from_le_bytes(buf[offset..offset + FILE_VERSION_SIZE].try_into().unwrap());
+        offset += FILE_VERSION_SIZE;
+
+        let flags = u16::from_le_bytes(buf[offset..offset + FILE_FLAGS_SIZE].try_into().unwrap());
+        offset += FILE_FLAGS_SIZE;
+
+        let record_count = u64::from_le_bytes(
+            buf[offset..offset + FILE_RECORD_COUNT_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FILE_RECORD_COUNT_SIZE;
+
+        let total_records = u64::from_le_bytes(
+            buf[offset..offset + FILE_TOTAL_RECORDS_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FILE_TOTAL_RECORDS_SIZE;
+
+        let data_size = u64::from_le_bytes(
+            buf[offset..offset + FILE_DATA_SIZE_SIZE]
+                .try_into()
+                .unwrap(),
+        );
+        offset += FILE_DATA_SIZE_SIZE;
+
+        let next_id =
+            u64::from_le_bytes(buf[offset..offset + FILE_NEXT_ID_SIZE].try_into().unwrap());
+        offset += FILE_NEXT_ID_SIZE;
+
+        let checksum =
+            u32::from_le_bytes(buf[offset..offset + FILE_CHECKSUM_SIZE].try_into().unwrap());
 
         let header = Self {
             magic,

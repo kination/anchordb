@@ -87,4 +87,33 @@ impl AnchorDB {
 
         Ok(Some(String::from_utf8(bytes).expect("invalid utf-8")))
     }
+
+    /// Saves the in-memory index to a `.idx` file for fast startup on next open.
+    pub fn close(&self) -> io::Result<()> {
+        //  Make 'local_inner' to avoid holding the lock while doing file I/O
+        let local_inner = self.inner.lock().unwrap();
+        let latest_id = local_inner.next_id.saturating_sub(1);
+        let idx_path = local_inner.storage.idx_path();
+        let max_offset = local_inner
+            .storage
+            .path
+            .metadata()
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        local_inner
+            .index
+            .serialize_to_file(&idx_path, latest_id, max_offset)
+    }
+}
+
+// Force saving '.idx' file when AnchorDBInner is dropped, for exceptional case
+impl Drop for AnchorDBInner {
+    fn drop(&mut self) {
+        let idx_path = self.storage.idx_path();
+        let max_offset = self.storage.path.metadata().map(|m| m.len()).unwrap_or(0);
+        let _ = self
+            .index
+            .serialize_to_file(&idx_path, self.next_id, max_offset);
+    }
 }
