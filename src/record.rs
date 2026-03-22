@@ -1,8 +1,8 @@
 use crate::error::AnchorError;
 use crate::types::{
-    FIELD_CRC32_SIZE, FIELD_DATA_LENGTH_SIZE, FIELD_DATA_TYPE_SIZE, FIELD_ID_SIZE,
+    FIELD_CRC32_SIZE, FIELD_DATA_LENGTH_SIZE, FIELD_DATA_TYPE_SIZE, FIELD_PRIORITY_SIZE, FIELD_ID_SIZE,
     FIELD_RECORD_TYPE_SIZE, FIELD_SESSION_ID_SIZE, FIELD_TAGS_LEN_SIZE, FIELD_TIMESTAMP_SIZE,
-    MAGIC_BYTES,
+    MAGIC_BYTES, Priority
 };
 use crc32fast::Hasher;
 
@@ -11,6 +11,7 @@ pub const RECORD_HEADER_SIZE: usize = FIELD_RECORD_TYPE_SIZE
     + FIELD_TIMESTAMP_SIZE
     + FIELD_SESSION_ID_SIZE
     + FIELD_DATA_TYPE_SIZE
+    + FIELD_PRIORITY_SIZE
     + FIELD_TAGS_LEN_SIZE
     + FIELD_DATA_LENGTH_SIZE
     + FIELD_CRC32_SIZE;
@@ -22,6 +23,7 @@ pub struct RecordHeader {
     pub timestamp: u64,
     pub session_id: u64,
     pub data_type: u8,
+    pub priority: Priority,
     pub tags_len: u16,
     pub data_length: u32,
     pub crc32: u32,
@@ -37,9 +39,10 @@ pub struct RecordHeader {
 /// 9       8     timestamp      u64 LE    Epoch millis
 /// 17      8     session_id     u64 LE    Session ID
 /// 25      1     data_type      u8        0x00=Bytes, 0x01=Str, 0x02=JSON
-/// 26      2     tags_len       u16 LE    Tags length
-/// 28      4     data_length    u32 LE    Payload length
-/// 32      4     crc32          u32 LE    Payload + Tags CRC32
+/// 26      1     priority       u8        
+/// 27      2     tags_len       u16 LE    Tags length
+/// 29      4     data_length    u32 LE    Payload length
+/// 33      4     crc32          u32 LE    Payload + Tags CRC32
 /// ```
 impl RecordHeader {
     pub fn to_bytes(&self) -> [u8; RECORD_HEADER_SIZE] {
@@ -60,6 +63,9 @@ impl RecordHeader {
 
         buf[offset] = self.data_type;
         offset += FIELD_DATA_TYPE_SIZE;
+        
+        buf[offset] = self.priority as u8;
+        offset += FIELD_PRIORITY_SIZE;
 
         buf[offset..offset + FIELD_TAGS_LEN_SIZE].copy_from_slice(&self.tags_len.to_le_bytes());
         offset += FIELD_TAGS_LEN_SIZE;
@@ -98,6 +104,10 @@ impl RecordHeader {
 
         let data_type = buf[offset];
         offset += FIELD_DATA_TYPE_SIZE;
+        
+        let priority = Priority::try_from(buf[offset]).unwrap();
+        
+        offset += FIELD_PRIORITY_SIZE;
 
         let tags_len = u16::from_le_bytes(
             buf[offset..offset + FIELD_TAGS_LEN_SIZE]
@@ -121,6 +131,7 @@ impl RecordHeader {
             timestamp,
             session_id,
             data_type,
+            priority,
             tags_len,
             data_length,
             crc32,

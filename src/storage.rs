@@ -89,6 +89,7 @@ impl Storage {
             record_type,
             id,
             timestamp,
+            priority: crate::types::Priority::default(),
             session_id: 0, // default Session ID
             data_type,
             tags_len: 0,
@@ -145,6 +146,7 @@ impl Storage {
             record_type: crate::types::RECORD_TYPE_TOMBSTONE,
             id,
             timestamp,
+            priority: crate::types::Priority::default(),
             session_id: 0,
             data_type: crate::types::DataType::Bytes as u8,
             tags_len: 0,
