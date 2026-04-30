@@ -1,5 +1,6 @@
 use anchordb::error::AnchorError;
 use anchordb::record::{FileHeader, RecordHeader, RECORD_HEADER_SIZE};
+use anchordb::types::Priority;
 
 #[test]
 fn test_record_header_serialization() {
@@ -9,6 +10,7 @@ fn test_record_header_serialization() {
         timestamp: 1709123456789,
         session_id: 99,
         data_type: 0x01,
+        priority: Priority::Important,
         tags_len: 12,
         data_length: 1024,
         crc32: 0xABCDEF01,

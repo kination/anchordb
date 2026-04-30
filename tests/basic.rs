@@ -81,6 +81,39 @@ fn close_creates_idx_and_reopen_loads_it() {
 }
 
 #[test]
+fn idx_file_deserializes_successfully() {
+    // Direct check that the .idx file written by close() can be read back.
+    // Before the fix, INDEX_ENTRY_SIZE mismatched actual on-disk layout and
+    // deserialize_from_file returned UnexpectedEof, silently falling back to
+    // full scan.
+    use anchordb::index::Index;
+
+    let tmp = NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+
+    {
+        let db = AnchorDB::open(&db_path).unwrap();
+        db.save("alpha").unwrap();
+        db.save("beta").unwrap();
+        db.save("gamma").unwrap();
+        db.close().unwrap();
+    }
+
+    let mut idx_path = db_path.clone();
+    let mut ext = idx_path.extension().unwrap_or_default().to_os_string();
+    ext.push(".idx");
+    idx_path.set_extension(ext);
+
+    let (index, latest_id, _max_offset) =
+        Index::deserialize_from_file(&idx_path).expect(".idx must deserialize");
+    assert_eq!(index.len(), 3);
+    assert_eq!(latest_id, 3);
+    assert!(index.contains(1));
+    assert!(index.contains(2));
+    assert!(index.contains(3));
+}
+
+#[test]
 fn drop_saves_idx_automatically() {
     let tmp = NamedTempFile::new().unwrap();
     let db_path = tmp.path().to_path_buf();

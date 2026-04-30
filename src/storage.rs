@@ -268,6 +268,7 @@ impl Storage {
                         record_type: header.record_type,
                         session_id: header.session_id,
                         timestamp: header.timestamp,
+                        priority: header.priority,
                     },
                 );
             }
