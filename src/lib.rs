@@ -12,7 +12,7 @@ use index::{Index, IndexEntry};
 use storage::Storage;
 
 use types::DataType::Str;
-use types::RECORD_TYPE_DATA;
+use types::{Priority, RECORD_TYPE_DATA};
 
 /// Internal 'inner' class for safe multi-thread access
 pub struct AnchorDBInner {
@@ -63,6 +63,7 @@ impl AnchorDB {
                 record_type: RECORD_TYPE_DATA,
                 session_id: 0,
                 timestamp,
+                priority: Priority::default(),
             },
         );
         inner.next_id += 1;
