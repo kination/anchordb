@@ -1,6 +1,7 @@
 use crate::types::{
     DataType, FIELD_DATA_LENGTH_SIZE, FIELD_DATA_TYPE_SIZE, FIELD_ID_SIZE, FIELD_OFFSET_SIZE,
-    FIELD_RECORD_TYPE_SIZE, FIELD_SESSION_ID_SIZE, FIELD_TIMESTAMP_SIZE,
+    FIELD_PRIORITY_SIZE, FIELD_RECORD_TYPE_SIZE, FIELD_SESSION_ID_SIZE, FIELD_TIMESTAMP_SIZE,
+    Priority,
 };
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::{collections::HashMap, fs::File, io, path::Path};
@@ -9,6 +10,7 @@ pub const INDEX_ENTRY_SIZE: usize = FIELD_ID_SIZE
     + FIELD_OFFSET_SIZE
     + FIELD_DATA_LENGTH_SIZE
     + FIELD_DATA_TYPE_SIZE
+    + FIELD_PRIORITY_SIZE
     + FIELD_RECORD_TYPE_SIZE
     + FIELD_SESSION_ID_SIZE
     + FIELD_TIMESTAMP_SIZE;
@@ -20,6 +22,7 @@ pub struct IndexEntry {
     pub record_type: u8,
     pub session_id: u64,
     pub timestamp: u64,
+    pub priority: Priority,
 }
 
 pub struct Index {
@@ -116,6 +119,9 @@ impl Index {
             let data_type = DataType::try_from(entry_buf[offset]).unwrap_or(DataType::Bytes);
             offset += FIELD_DATA_TYPE_SIZE;
 
+            let priority = Priority::try_from(entry_buf[offset]).unwrap_or(Priority::Normal);
+            offset += FIELD_PRIORITY_SIZE;
+
             let record_type = entry_buf[offset];
             offset += FIELD_RECORD_TYPE_SIZE;
 
@@ -141,6 +147,7 @@ impl Index {
                     record_type,
                     session_id,
                     timestamp,
+                    priority,
                 },
             );
         }
@@ -169,6 +176,7 @@ impl Index {
             writer.write_all(&entry.offset.to_le_bytes())?;
             writer.write_all(&entry.data_length.to_le_bytes())?;
             writer.write_all(&(entry.data_type as u8).to_le_bytes())?;
+            writer.write_all(&(entry.priority as u8).to_le_bytes())?;
             writer.write_all(&entry.record_type.to_le_bytes())?;
             writer.write_all(&entry.session_id.to_le_bytes())?;
             writer.write_all(&entry.timestamp.to_le_bytes())?;

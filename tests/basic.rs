@@ -1,4 +1,5 @@
 use anchordb::AnchorDB;
+use anchordb::types::{AnchorData, DataType, MemoryInput, Priority};
 use tempfile::NamedTempFile;
 
 #[test]
@@ -81,6 +82,39 @@ fn close_creates_idx_and_reopen_loads_it() {
 }
 
 #[test]
+fn idx_file_deserializes_successfully() {
+    // Direct check that the .idx file written by close() can be read back.
+    // Before the fix, INDEX_ENTRY_SIZE mismatched actual on-disk layout and
+    // deserialize_from_file returned UnexpectedEof, silently falling back to
+    // full scan.
+    use anchordb::index::Index;
+
+    let tmp = NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+
+    {
+        let db = AnchorDB::open(&db_path).unwrap();
+        db.save("alpha").unwrap();
+        db.save("beta").unwrap();
+        db.save("gamma").unwrap();
+        db.close().unwrap();
+    }
+
+    let mut idx_path = db_path.clone();
+    let mut ext = idx_path.extension().unwrap_or_default().to_os_string();
+    ext.push(".idx");
+    idx_path.set_extension(ext);
+
+    let (index, latest_id, _max_offset) =
+        Index::deserialize_from_file(&idx_path).expect(".idx must deserialize");
+    assert_eq!(index.len(), 3);
+    assert_eq!(latest_id, 3);
+    assert!(index.contains(1));
+    assert!(index.contains(2));
+    assert!(index.contains(3));
+}
+
+#[test]
 fn drop_saves_idx_automatically() {
     let tmp = NamedTempFile::new().unwrap();
     let db_path = tmp.path().to_path_buf();
@@ -130,4 +164,90 @@ fn auxiliary_after_saves() {
     let mut keys = db.keys();
     keys.sort();
     assert_eq!(keys, vec![id1, id2, id3]);
+}
+
+#[test]
+fn delete_removes_record_and_persists_across_reopen() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+
+    let id;
+    {
+        let db = AnchorDB::open(&db_path).unwrap();
+        id = db.save("to-be-deleted").unwrap();
+        db.save("survivor").unwrap();
+
+        assert!(db.delete(id).unwrap());
+        assert!(!db.exists(id));
+        assert_eq!(db.load(id).unwrap(), None);
+
+        // Second delete on same id is a no-op.
+        assert!(!db.delete(id).unwrap());
+        db.close().unwrap();
+    }
+
+    // Reopen — tombstone must be honored.
+    let db2 = AnchorDB::open(&db_path).unwrap();
+    assert!(!db2.exists(id));
+    assert_eq!(db2.load(id).unwrap(), None);
+    assert_eq!(db2.load(2).unwrap(), Some("survivor".to_string()));
+}
+
+#[test]
+fn save_with_opts_round_trips_priority_and_data_type() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+
+    let id;
+    {
+        let db = AnchorDB::open(&db_path).unwrap();
+        id = db
+            .save_with_opts(b"\x00\x01\x02", DataType::Bytes, Priority::Critical, &[])
+            .unwrap();
+        db.close().unwrap();
+    }
+
+    let db2 = AnchorDB::open(&db_path).unwrap();
+    let rec = db2.fetch_memory(id).unwrap().expect("record exists");
+    assert_eq!(rec.priority, Priority::Critical);
+    assert_eq!(rec.data, AnchorData::Bytes(vec![0x00, 0x01, 0x02]));
+    assert!(rec.tags.is_empty());
+}
+
+#[test]
+fn append_memory_round_trips_tags() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+
+    let input = MemoryInput {
+        tags: vec!["src/foo.rs".to_string(), "lines:10-20".to_string()],
+        data: AnchorData::Str("body".to_string()),
+        priority: Priority::Important,
+    };
+
+    let id;
+    {
+        let db = AnchorDB::open(&db_path).unwrap();
+        id = db.append_memory(&input).unwrap();
+        db.close().unwrap();
+    }
+
+    let db2 = AnchorDB::open(&db_path).unwrap();
+    let rec = db2.fetch_memory(id).unwrap().expect("record exists");
+    assert_eq!(rec.tags, input.tags);
+    assert_eq!(rec.data, input.data);
+    assert_eq!(rec.priority, Priority::Important);
+}
+
+#[test]
+fn load_returns_invalid_data_on_non_utf8() {
+    let tmp = NamedTempFile::new().unwrap();
+    let db = AnchorDB::open(tmp.path()).unwrap();
+
+    let id = db
+        .save_with_opts(&[0xFF, 0xFE, 0xFD], DataType::Bytes, Priority::Normal, &[])
+        .unwrap();
+
+    let err = db.load(id).expect_err("non-utf8 must fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 }

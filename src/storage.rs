@@ -4,7 +4,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::record::{FILE_HEADER_SIZE, FileHeader, RECORD_HEADER_SIZE, RecordHeader};
-use crate::types::VERSION;
+use crate::types::{Priority, VERSION};
 
 pub struct Storage {
     storage_obj: File,
@@ -71,7 +71,9 @@ impl Storage {
         &mut self,
         record_type: u8,
         data_type: u8,
+        priority: Priority,
         id: u64,
+        tags: &[u8],
         data: &[u8],
     ) -> io::Result<(u64, u64)> {
         let offset = self.storage_obj.seek(SeekFrom::End(0))?;
@@ -81,7 +83,15 @@ impl Storage {
             .unwrap()
             .as_millis() as u64;
 
+        if tags.len() > u16::MAX as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "tags length exceeds u16::MAX",
+            ));
+        }
+
         let mut hasher = crc32fast::Hasher::new();
+        hasher.update(tags);
         hasher.update(data);
         let crc32 = hasher.finalize();
 
@@ -89,19 +99,32 @@ impl Storage {
             record_type,
             id,
             timestamp,
+            priority,
             session_id: 0, // default Session ID
             data_type,
-            tags_len: 0,
+            tags_len: tags.len() as u16,
             data_length: data.len() as u32,
             crc32,
         };
         self.storage_obj.write_all(&header.to_bytes())?;
+        if !tags.is_empty() {
+            self.storage_obj.write_all(tags)?;
+        }
         self.storage_obj.write_all(data)?;
 
         Ok((offset, timestamp))
     }
 
     pub fn read_record(&mut self, offset: u64, data_length: u32) -> io::Result<Vec<u8>> {
+        let (_tags, data) = self.read_record_full(offset, data_length)?;
+        Ok(data)
+    }
+
+    pub fn read_record_full(
+        &mut self,
+        offset: u64,
+        data_length: u32,
+    ) -> io::Result<(Vec<u8>, Vec<u8>)> {
         self.storage_obj.seek(SeekFrom::Start(offset))?;
 
         let mut header_buf = [0u8; RECORD_HEADER_SIZE];
@@ -115,10 +138,16 @@ impl Storage {
             ));
         }
 
+        let mut tags_buf = vec![0u8; header.tags_len as usize];
+        if header.tags_len > 0 {
+            self.storage_obj.read_exact(&mut tags_buf)?;
+        }
+
         let mut buf = vec![0u8; data_length as usize];
         self.storage_obj.read_exact(&mut buf)?;
 
         let mut hasher = crc32fast::Hasher::new();
+        hasher.update(&tags_buf);
         hasher.update(&buf);
         if hasher.finalize() != header.crc32 {
             return Err(io::Error::new(
@@ -127,7 +156,7 @@ impl Storage {
             ));
         }
 
-        Ok(buf)
+        Ok((tags_buf, buf))
     }
 
     pub fn append_tombstone(&mut self, id: u64) -> io::Result<u64> {
@@ -145,6 +174,7 @@ impl Storage {
             record_type: crate::types::RECORD_TYPE_TOMBSTONE,
             id,
             timestamp,
+            priority: crate::types::Priority::default(),
             session_id: 0,
             data_type: crate::types::DataType::Bytes as u8,
             tags_len: 0,
@@ -223,9 +253,24 @@ impl Storage {
 
             let header = RecordHeader::from_bytes(&header_buf);
 
-            if valid_offset + (RECORD_HEADER_SIZE as u64) + (header.data_length as u64) > file_len {
+            let record_total = RECORD_HEADER_SIZE as u64
+                + header.tags_len as u64
+                + header.data_length as u64;
+            if valid_offset + record_total > file_len {
                 self.storage_obj.set_len(valid_offset)?;
                 break;
+            }
+
+            let mut tags_buf = vec![0u8; header.tags_len as usize];
+            if header.tags_len > 0
+                && let Err(e) = self.storage_obj.read_exact(&mut tags_buf)
+            {
+                if e.kind() == io::ErrorKind::UnexpectedEof {
+                    self.storage_obj.set_len(valid_offset)?;
+                    break;
+                } else {
+                    return Err(e);
+                }
             }
 
             let mut data_buf = vec![0u8; header.data_length as usize];
@@ -241,6 +286,7 @@ impl Storage {
             }
 
             let mut hasher = crc32fast::Hasher::new();
+            hasher.update(&tags_buf);
             hasher.update(&data_buf);
             if hasher.finalize() != header.crc32 {
                 self.storage_obj.set_len(valid_offset)?;
@@ -266,11 +312,12 @@ impl Storage {
                         record_type: header.record_type,
                         session_id: header.session_id,
                         timestamp: header.timestamp,
+                        priority: header.priority,
                     },
                 );
             }
 
-            offset += RECORD_HEADER_SIZE as u64 + header.data_length as u64;
+            offset += record_total;
         }
 
         Ok(latest_id)
